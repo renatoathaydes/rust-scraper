@@ -1,0 +1,6 @@
+[package]
+name = "rust-scraper"
+version = "0.1.0"
+authors = ["renato <renato@athaydes.com>"]
+
+[dependencies]
