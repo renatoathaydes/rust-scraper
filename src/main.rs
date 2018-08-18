@@ -5,10 +5,17 @@ use std::io;
 use std::io::{BufRead, Read};
 
 #[derive(Debug)]
+struct HttpRequestMeta {
+    host: String,
+    port: u32,
+}
+
+#[derive(Debug)]
 struct HttpRequest {
     method_line: MethodLine,
     headers: HashMap<String, String>,
     body: Vec<u8>,
+    meta: Option<HttpRequestMeta>,
 }
 
 #[derive(Debug)]
@@ -51,7 +58,7 @@ fn parse_http_request(file: &File) -> Result<HttpRequest, String> {
         }
         let parts: Vec<&str> = line.splitn(2, ":").collect();
         if parts.len() == 2 {
-            headers.insert(parts[0].to_owned(), parts[1].to_owned());
+            headers.insert(parts[0].to_owned(), parts[1].trim().to_owned());
         } else {
             return Err(format!("Invalid header line (missing ':'): {}", line).to_owned());
         }
@@ -61,7 +68,8 @@ fn parse_http_request(file: &File) -> Result<HttpRequest, String> {
     reader.read_to_end(&mut body)
         .expect("Could not read body");
 
-    Ok(HttpRequest { method_line, headers, body })
+    let meta = Option::None;
+    Ok(with_meta(HttpRequest { method_line, headers, body, meta }))
 }
 
 fn parse_method_line(reader: &mut io::BufReader<&File>) -> Result<MethodLine, String> {
@@ -83,4 +91,41 @@ fn parse_method_line(reader: &mut io::BufReader<&File>) -> Result<MethodLine, St
         path: parts[1].to_owned(),
         http_version: http_version.to_owned(),
     })
+}
+
+fn with_meta(mut req: HttpRequest) -> HttpRequest {
+    let host: String;
+    if req.method_line.path.starts_with("http://") {
+        let url_minus_protocol: String = req.method_line.path.chars().skip(7).collect();
+        let slash_index = url_minus_protocol.find("/");
+        let path_only: String;
+        if let Some(index) = slash_index {
+            host = url_minus_protocol.chars().take(index).collect();
+            path_only = url_minus_protocol.chars().skip(index).collect();
+        } else {
+            host = url_minus_protocol;
+            path_only = "/".to_owned();
+        }
+        req.method_line.path = path_only;
+    } else if req.method_line.path.starts_with("https://") {
+        panic!("HTTPS is not supported yet");
+    } else {
+        host = req.headers.get("Host")
+            .expect("Unable to identify Host either from headers or method-line")
+            .to_owned();
+    }
+
+    let port: u32;
+    let fixed_host: String;
+    if host.contains(":") {
+        let parts: Vec<&str> = host.splitn(2, ":").collect();
+        fixed_host = parts[0].to_owned();
+        port = parts[1].parse::<u32>().expect("Invalid port")
+    } else {
+        fixed_host = host.clone();
+        port = 80;
+    };
+    req.headers.insert("Host".to_owned(), fixed_host.clone());
+    req.meta = Option::Some(HttpRequestMeta { host: fixed_host, port });
+    req
 }
