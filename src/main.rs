@@ -73,13 +73,14 @@ fn parse_method_line(reader: &mut io::BufReader<&File>) -> Result<MethodLine, St
         line.remove(new_line_idx);
     }
     let parts: Vec<&str> = line.split(" ").collect();
-    if parts.len() != 3 {
+    if parts.len() != 2 && parts.len() != 3 {
         return Err(format!("Invalid method-line (wrong number of parts): {}", line));
     }
+    let http_version = if parts.len() == 3 { parts[2] } else { "HTTP/1.1" };
 
     Ok(MethodLine {
         method: parts[0].to_owned(),
         path: parts[1].to_owned(),
-        http_version: parts[2].to_owned(),
+        http_version: http_version.to_owned(),
     })
 }
